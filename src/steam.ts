@@ -53,7 +53,7 @@ export async function findSteamRoots(
   const candidates = candidateSteamRoots(ctx);
   const existing: string[] = [];
   for (const root of candidates) {
-    if (await isDirectory(root)) existing.push(root);
+    if (await isDirectory(root)) existing.push(path.normalize(root));
   }
   if (existing.length === 0) throw new SteamNotFoundError(candidates);
   return existing;

@@ -150,4 +150,19 @@ describe('findLibraryDirs', () => {
     const libs = await findLibraryDirs([root]);
     expect(libs).toHaveLength(1);
   });
+
+  it('de-duplicates a Steam root reached through a symlink (Linux ~/.steam/steam scenario)', async () => {
+    const real = path.join(tmp, 'RealSteam');
+    await writeFile(path.join(real, 'steamapps', 'keep.txt'), '');
+    const link = path.join(tmp, 'SteamLink');
+    try {
+      await fs.symlink(real, link, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch {
+      // Filesystem or privileges do not allow symlinks here; nothing to test.
+      return;
+    }
+    const libs = await findLibraryDirs([real, link]);
+    expect(libs).toHaveLength(1);
+    expect(libs[0]).toBe(await fs.realpath(real));
+  });
 });

@@ -86,6 +86,25 @@ export async function windowsRegistrySteamPaths(): Promise<string[]> {
   return found;
 }
 
+/** Canonical form of a path: symlinks resolved, falling back to plain normalization. */
+async function canonicalPath(p: string): Promise<string> {
+  try {
+    return await fs.realpath(p);
+  } catch {
+    return path.normalize(p);
+  }
+}
+
+/**
+ * Dedupe key for a path. Windows and default macOS filesystems are
+ * case-insensitive, so paths that differ only by case are the same folder
+ * (e.g. the registry reports "c:\program files (x86)\steam" while the env var
+ * says "C:\Program Files (x86)\Steam").
+ */
+function dedupeKey(p: string, platform: NodeJS.Platform): string {
+  return platform === 'win32' || platform === 'darwin' ? p.toLowerCase() : p;
+}
+
 /** Steam roots that actually exist on this machine. */
 export async function findSteamRoots(
   ctx: PlatformContext = defaultContext(),
@@ -96,32 +115,42 @@ export async function findSteamRoots(
       if (!candidates.includes(p)) candidates.push(p);
     }
   }
-  const existing: string[] = [];
+  const existing = new Map<string, string>();
   for (const root of candidates) {
-    if (await isDirectory(root)) existing.push(path.normalize(root));
+    if (!(await isDirectory(root))) continue;
+    const canonical = await canonicalPath(root);
+    existing.set(dedupeKey(canonical, ctx.platform), canonical);
   }
-  if (existing.length === 0) throw new SteamNotFoundError(candidates);
-  return existing;
+  if (existing.size === 0) throw new SteamNotFoundError(candidates);
+  return [...existing.values()];
 }
 
 /**
  * Every Steam library directory (the root itself plus any extra libraries
- * declared in steamapps/libraryfolders.vdf), de-duplicated and filtered to
- * directories that exist.
+ * declared in steamapps/libraryfolders.vdf), canonicalized and de-duplicated
+ * (case-insensitively on Windows/macOS), filtered to directories that exist.
  */
-export async function findLibraryDirs(steamRoots: string[]): Promise<string[]> {
-  const dirs = new Set<string>();
+export async function findLibraryDirs(
+  steamRoots: string[],
+  platform: NodeJS.Platform = process.platform,
+): Promise<string[]> {
+  const dirs = new Map<string, string>();
+  const add = async (p: string): Promise<void> => {
+    if (!(await isDirectory(p))) return;
+    const canonical = await canonicalPath(p);
+    dirs.set(dedupeKey(canonical, platform), canonical);
+  };
   for (const root of steamRoots) {
-    dirs.add(path.normalize(root));
+    await add(root);
     const vdfPath = path.join(root, 'steamapps', 'libraryfolders.vdf');
     try {
       const content = await fs.readFile(vdfPath, 'utf8');
       for (const lib of parseLibraryFoldersVdf(content)) {
-        if (await isDirectory(lib)) dirs.add(path.normalize(lib));
+        await add(lib);
       }
     } catch {
       // No libraryfolders.vdf (or unreadable): the root itself is the only library.
     }
   }
-  return [...dirs];
+  return [...dirs.values()];
 }

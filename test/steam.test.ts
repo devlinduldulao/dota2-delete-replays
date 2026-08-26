@@ -53,7 +53,7 @@ describe('findSteamRoots', () => {
     const home = path.join(tmp, 'home');
     await writeFile(path.join(home, '.steam', 'steam', 'steamapps', 'keep.txt'), '');
     const roots = await findSteamRoots({ platform: 'linux', homeDir: home, env: {} });
-    expect(roots).toEqual([path.join(home, '.steam', 'steam')]);
+    expect(roots).toEqual([await fs.realpath(path.join(home, '.steam', 'steam'))]);
   });
 
   it('throws SteamNotFoundError with searched paths when Steam is absent (unhappy path)', async () => {
@@ -113,8 +113,8 @@ describe('findLibraryDirs', () => {
     await writeFile(path.join(root, 'steamapps', 'libraryfolders.vdf'), vdf);
 
     const libs = await findLibraryDirs([root]);
-    expect(libs).toContain(path.normalize(root));
-    expect(libs).toContain(path.normalize(second));
+    expect(libs).toContain(await fs.realpath(root));
+    expect(libs).toContain(await fs.realpath(second));
     // The non-existent "ghost" library is filtered out.
     expect(libs.some((l) => l.includes('ghost'))).toBe(false);
   });
@@ -123,6 +123,31 @@ describe('findLibraryDirs', () => {
     const root = path.join(tmp, 'SteamNoVdf');
     await writeFile(path.join(root, 'steamapps', 'keep.txt'), '');
     const libs = await findLibraryDirs([root]);
-    expect(libs).toEqual([path.normalize(root)]);
+    expect(libs).toEqual([await fs.realpath(root)]);
+  });
+
+  it('de-duplicates the same library reported with different casing (regression: duplicate scan on Windows)', async () => {
+    const root = path.join(tmp, 'Steam');
+    await writeFile(path.join(root, 'steamapps', 'keep.txt'), '');
+    // Windows reports the same folder with different casing via env vars vs
+    // the registry; on case-insensitive filesystems both stat successfully.
+    const libs = await findLibraryDirs([root, root.toLowerCase(), root.toUpperCase()], 'win32');
+    expect(libs).toHaveLength(1);
+  });
+
+  it('de-duplicates a library listed again in its own libraryfolders.vdf (regression)', async () => {
+    const root = path.join(tmp, 'SteamVdfDup');
+    await writeFile(path.join(root, 'steamapps', 'keep.txt'), '');
+    const vdf = `"libraryfolders"
+{
+	"0"
+	{
+		"path"		"${root.replace(/\\/g, '\\\\')}"
+	}
+}
+`;
+    await writeFile(path.join(root, 'steamapps', 'libraryfolders.vdf'), vdf);
+    const libs = await findLibraryDirs([root]);
+    expect(libs).toHaveLength(1);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "dota2-delete-replays",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Cross-platform CLI that finds and deletes your Dota 2 match replays (.dem) to free disk space. Works on Windows, macOS, and Linux.",
   "keywords": [
     "dota2",

@@ -4,7 +4,7 @@ import chalk from 'chalk';
  * Central styling for terminal output. chalk automatically disables colors
  * when output is not a TTY or NO_COLOR is set, so piped/--json usage stays clean.
  */
-export const VERSION = '1.1.0';
+export const VERSION = '1.1.1';
 
 export const ui = {
   banner(): string {

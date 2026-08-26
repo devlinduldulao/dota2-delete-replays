@@ -1,0 +1,44 @@
+{
+  "name": "dota2-delete-replays",
+  "version": "1.0.0",
+  "description": "Cross-platform CLI that finds and deletes your Dota 2 match replays (.dem) to free disk space. Works on Windows, macOS, and Linux.",
+  "keywords": [
+    "dota2",
+    "dota",
+    "replays",
+    "steam",
+    "cli",
+    "cleanup",
+    "disk-space"
+  ],
+  "license": "MIT",
+  "author": "devlinduldulao",
+  "type": "module",
+  "bin": {
+    "dota2-delete-replays": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --clean --minify",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

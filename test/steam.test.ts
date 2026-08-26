@@ -5,6 +5,7 @@ import {
   findLibraryDirs,
   findSteamRoots,
   parseLibraryFoldersVdf,
+  parseRegQueryInstallPath,
   SteamNotFoundError,
 } from '../src/steam.js';
 import { mkTmpDir, writeFile } from './helpers.js';
@@ -64,6 +65,26 @@ describe('findSteamRoots', () => {
     await expect(
       findSteamRoots({ platform: 'linux', homeDir: home, env: {} }),
     ).rejects.toThrow(/\.steam\/steam/);
+  });
+});
+
+describe('parseRegQueryInstallPath', () => {
+  it('extracts the Steam InstallPath from reg query output (happy path)', () => {
+    const output = `
+HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Valve\\Steam
+    InstallPath    REG_SZ    C:\\Program Files (x86)\\Steam
+`;
+    expect(parseRegQueryInstallPath(output)).toBe('C:\\Program Files (x86)\\Steam');
+  });
+
+  it('handles install paths containing spaces (happy path)', () => {
+    const output = '    InstallPath    REG_SZ    D:\\My Games\\Steam\r\n';
+    expect(parseRegQueryInstallPath(output)).toBe('D:\\My Games\\Steam');
+  });
+
+  it('returns null when the value is missing (unhappy path)', () => {
+    expect(parseRegQueryInstallPath('ERROR: The system was unable to find the specified registry key or value.')).toBeNull();
+    expect(parseRegQueryInstallPath('')).toBeNull();
   });
 });
 

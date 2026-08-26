@@ -51,11 +51,24 @@ export async function findReplayDirs(libraryDirs: string[]): Promise<string[]> {
   return found;
 }
 
+export interface ScanOptions {
+  /** When set, only replays last modified more than this many days ago are included. */
+  olderThanDays?: number;
+}
+
 /**
  * List every replay file (*.dem, case-insensitive) directly inside a replay
- * folder. Anything else in the folder is left untouched.
+ * folder. Anything else in the folder is left untouched. With
+ * options.olderThanDays set, only files older than the cutoff are listed.
  */
-export async function scanReplayDir(dir: string): Promise<ReplayDirScan> {
+export async function scanReplayDir(
+  dir: string,
+  options: ScanOptions = {},
+): Promise<ReplayDirScan> {
+  const cutoffMs =
+    options.olderThanDays !== undefined
+      ? Date.now() - options.olderThanDays * 86_400_000
+      : null;
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const files: ReplayFile[] = [];
   for (const entry of entries) {
@@ -64,6 +77,7 @@ export async function scanReplayDir(dir: string): Promise<ReplayDirScan> {
     const fullPath = path.join(dir, entry.name);
     try {
       const stat = await fs.stat(fullPath);
+      if (cutoffMs !== null && stat.mtimeMs > cutoffMs) continue;
       files.push({ path: fullPath, sizeBytes: stat.size });
     } catch {
       // File vanished between readdir and stat; skip it.
@@ -74,9 +88,12 @@ export async function scanReplayDir(dir: string): Promise<ReplayDirScan> {
 }
 
 /** Scan every replay dir. */
-export async function scanAll(dirs: string[]): Promise<ReplayDirScan[]> {
+export async function scanAll(
+  dirs: string[],
+  options: ScanOptions = {},
+): Promise<ReplayDirScan[]> {
   const scans: ReplayDirScan[] = [];
-  for (const dir of dirs) scans.push(await scanReplayDir(dir));
+  for (const dir of dirs) scans.push(await scanReplayDir(dir, options));
   return scans;
 }
 

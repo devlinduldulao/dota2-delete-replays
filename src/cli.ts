@@ -20,6 +20,7 @@ interface CliOptions {
   yes: boolean;
   json: boolean;
   path?: string;
+  olderThan?: number;
 }
 
 function printPlan(scans: ReplayDirScan[]): void {
@@ -78,14 +79,28 @@ export async function run(argv: string[]): Promise<number> {
       'Find and delete your Dota 2 match replays (.dem files) to free disk space.\n' +
         'Auto-detects Steam on Windows, macOS, and Linux, including secondary library drives.',
     )
-    .version('1.0.0')
+    .version('1.1.0')
     .option('-d, --dry-run', 'show what would be deleted without deleting anything', false)
     .option('-y, --yes', 'skip the confirmation prompt', false)
     .option('--json', 'print the result as JSON (implies --yes)', false)
     .option('-p, --path <dir>', 'use this replays folder instead of auto-detection')
+    .option(
+      '--older-than <days>',
+      'only delete replays last modified more than this many days ago',
+      (value: string) => Number(value),
+    )
     .parse(argv);
 
   const opts = program.opts<CliOptions>();
+
+  if (
+    opts.olderThan !== undefined &&
+    (!Number.isFinite(opts.olderThan) || opts.olderThan <= 0)
+  ) {
+    console.error(`--older-than must be a positive number of days, got "${opts.olderThan}".`);
+    return 1;
+  }
+  const scanOptions = opts.olderThan !== undefined ? { olderThanDays: opts.olderThan } : {};
 
   try {
     let replayDirs: string[];
@@ -109,19 +124,26 @@ export async function run(argv: string[]): Promise<number> {
       return 0;
     }
 
-    const scans = await scanAll(replayDirs);
+    const scans = await scanAll(replayDirs, scanOptions);
     const totalFiles = scans.reduce((n, s) => n + s.files.length, 0);
 
     if (totalFiles === 0) {
       if (opts.json) {
         console.log(JSON.stringify({ status: 'nothing-to-clean', replayDirs }, null, 2));
       } else {
-        console.log('Your replay folders are already empty. 🎉 Nothing to clean.');
+        console.log(
+          opts.olderThan !== undefined
+            ? `No replays older than ${opts.olderThan} day(s). 🎉 Nothing to clean.`
+            : 'Your replay folders are already empty. 🎉 Nothing to clean.',
+        );
       }
       return 0;
     }
 
     if (!opts.json) {
+      if (opts.olderThan !== undefined) {
+        console.log(`Filter: only replays older than ${opts.olderThan} day(s).`);
+      }
       printPlan(scans);
     }
 

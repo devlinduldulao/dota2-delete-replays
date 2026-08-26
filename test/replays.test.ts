@@ -128,6 +128,48 @@ describe('deleteReplays', () => {
   });
 });
 
+describe('scanReplayDir with olderThanDays', () => {
+  it('includes only replays older than the cutoff (happy path)', async () => {
+    const { replayDir } = await makeSteamLibraryWithReplays(path.join(tmp, 'Steam'), [
+      { name: 'old.dem', bytes: 1_000 },
+      { name: 'recent.dem', bytes: 2_000 },
+    ]);
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000);
+    await fs.utimes(path.join(replayDir, 'old.dem'), tenDaysAgo, tenDaysAgo);
+
+    const scan = await scanReplayDir(replayDir, { olderThanDays: 7 });
+    expect(scan.files.map((f) => path.basename(f.path))).toEqual(['old.dem']);
+    expect(scan.totalBytes).toBe(1_000);
+  });
+
+  it('excludes everything when all replays are newer than the cutoff (unhappy path)', async () => {
+    const { replayDir } = await makeSteamLibraryWithReplays(path.join(tmp, 'Steam'), [
+      { name: 'fresh.dem', bytes: 1_000 },
+    ]);
+    const scan = await scanReplayDir(replayDir, { olderThanDays: 7 });
+    expect(scan.files).toEqual([]);
+  });
+
+  it('deletes only old replays and keeps recent wins (happy path)', async () => {
+    const { libraryDir, replayDir } = await makeSteamLibraryWithReplays(
+      path.join(tmp, 'Steam'),
+      [
+        { name: 'ancient.dem', bytes: 4_000 },
+        { name: 'yesterday.dem', bytes: 9_000 },
+      ],
+    );
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000);
+    await fs.utimes(path.join(replayDir, 'ancient.dem'), thirtyDaysAgo, thirtyDaysAgo);
+
+    const scans = await scanAll(await findReplayDirs([libraryDir]), { olderThanDays: 7 });
+    const summary = await deleteReplays(scans);
+
+    expect(summary.filesDeleted).toBe(1);
+    expect(summary.bytesFreed).toBe(4_000);
+    expect(await fs.readdir(replayDir)).toEqual(['yesterday.dem']);
+  });
+});
+
 describe('formatBytes', () => {
   it('formats human-readable sizes (happy path)', () => {
     expect(formatBytes(0)).toBe('0 B');

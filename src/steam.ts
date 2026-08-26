@@ -1,6 +1,10 @@
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { candidateSteamRoots, defaultContext, type PlatformContext } from './platform.js';
+
+const execFileAsync = promisify(execFile);
 
 export class SteamNotFoundError extends Error {
   constructor(searched: string[]) {
@@ -46,11 +50,52 @@ export function parseLibraryFoldersVdf(vdfContent: string): string[] {
   return paths;
 }
 
+/** Registry keys where Steam records its install location on Windows. */
+const WINDOWS_REGISTRY_STEAM_KEYS = [
+  'HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam',
+  'HKLM\\SOFTWARE\\Valve\\Steam',
+  'HKCU\\SOFTWARE\\Valve\\Steam',
+];
+
+/**
+ * Extract the InstallPath value from `reg query` output, e.g.:
+ *   "    InstallPath    REG_SZ    C:\Program Files (x86)\Steam"
+ */
+export function parseRegQueryInstallPath(output: string): string | null {
+  const match = output.match(/InstallPath\s+REG_SZ\s+(.+)/);
+  const value = match?.[1]?.trim();
+  return value ? value : null;
+}
+
+/**
+ * Ask the Windows registry where Steam is installed. Returns an empty array
+ * on any other OS or when the keys are absent — this only ever *adds*
+ * candidates, it never fails the search.
+ */
+export async function windowsRegistrySteamPaths(): Promise<string[]> {
+  const found: string[] = [];
+  for (const key of WINDOWS_REGISTRY_STEAM_KEYS) {
+    try {
+      const { stdout } = await execFileAsync('reg', ['query', key, '/v', 'InstallPath']);
+      const installPath = parseRegQueryInstallPath(stdout);
+      if (installPath) found.push(installPath);
+    } catch {
+      // Key does not exist, or reg.exe unavailable; try the next key.
+    }
+  }
+  return found;
+}
+
 /** Steam roots that actually exist on this machine. */
 export async function findSteamRoots(
   ctx: PlatformContext = defaultContext(),
 ): Promise<string[]> {
   const candidates = candidateSteamRoots(ctx);
+  if (ctx.platform === 'win32') {
+    for (const p of await windowsRegistrySteamPaths()) {
+      if (!candidates.includes(p)) candidates.push(p);
+    }
+  }
   const existing: string[] = [];
   for (const root of candidates) {
     if (await isDirectory(root)) existing.push(path.normalize(root));

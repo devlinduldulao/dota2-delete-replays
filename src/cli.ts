@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline/promises';
 import { Command } from 'commander';
 import { defaultContext, UnsupportedPlatformError } from './platform.js';
 import { findLibraryDirs, findSteamRoots, SteamNotFoundError } from './steam.js';
+import { ui, VERSION } from './ui.js';
 import {
   deleteReplays,
   findReplayDirs,
@@ -27,10 +28,14 @@ function printPlan(scans: ReplayDirScan[]): void {
   const totalFiles = scans.reduce((n, s) => n + s.files.length, 0);
   const totalBytes = scans.reduce((n, s) => n + s.totalBytes, 0);
   for (const scan of scans) {
-    console.log(`\n📁 ${scan.dir}`);
-    console.log(`   ${scan.files.length} replay(s), ${formatBytes(scan.totalBytes)}`);
+    console.log(`\n📁 ${ui.dir(scan.dir)}`);
+    console.log(
+      `   ${ui.count(scan.files.length)} replay(s), ${ui.size(formatBytes(scan.totalBytes))}`,
+    );
   }
-  console.log(`\nTotal: ${totalFiles} replay(s), ${formatBytes(totalBytes)}`);
+  console.log(
+    `\n${ui.total('Total:')} ${ui.count(totalFiles)} replay(s), ${ui.size(formatBytes(totalBytes))}`,
+  );
 }
 
 async function confirm(question: string): Promise<boolean> {
@@ -79,7 +84,7 @@ export async function run(argv: string[]): Promise<number> {
       'Find and delete your Dota 2 match replays (.dem files) to free disk space.\n' +
         'Auto-detects Steam on Windows, macOS, and Linux, including secondary library drives.',
     )
-    .version('1.1.0')
+    .version(VERSION)
     .option('-d, --dry-run', 'show what would be deleted without deleting anything', false)
     .option('-y, --yes', 'skip the confirmation prompt', false)
     .option('--json', 'print the result as JSON (implies --yes)', false)
@@ -97,10 +102,14 @@ export async function run(argv: string[]): Promise<number> {
     opts.olderThan !== undefined &&
     (!Number.isFinite(opts.olderThan) || opts.olderThan <= 0)
   ) {
-    console.error(`--older-than must be a positive number of days, got "${opts.olderThan}".`);
+    console.error(ui.error(`--older-than must be a positive number of days, got "${opts.olderThan}".`));
     return 1;
   }
   const scanOptions = opts.olderThan !== undefined ? { olderThanDays: opts.olderThan } : {};
+
+  if (!opts.json) {
+    console.log(ui.banner());
+  }
 
   try {
     let replayDirs: string[];
@@ -119,7 +128,7 @@ export async function run(argv: string[]): Promise<number> {
       if (opts.json) {
         console.log(JSON.stringify({ status: 'nothing-to-clean', replayDirs: [] }, null, 2));
       } else {
-        console.log(message);
+        console.log(ui.info(message));
       }
       return 0;
     }
@@ -132,9 +141,11 @@ export async function run(argv: string[]): Promise<number> {
         console.log(JSON.stringify({ status: 'nothing-to-clean', replayDirs }, null, 2));
       } else {
         console.log(
-          opts.olderThan !== undefined
-            ? `No replays older than ${opts.olderThan} day(s). 🎉 Nothing to clean.`
-            : 'Your replay folders are already empty. 🎉 Nothing to clean.',
+          ui.info(
+            opts.olderThan !== undefined
+              ? `No replays older than ${opts.olderThan} day(s). 🎉 Nothing to clean.`
+              : 'Your replay folders are already empty. 🎉 Nothing to clean.',
+          ),
         );
       }
       return 0;
@@ -142,7 +153,7 @@ export async function run(argv: string[]): Promise<number> {
 
     if (!opts.json) {
       if (opts.olderThan !== undefined) {
-        console.log(`Filter: only replays older than ${opts.olderThan} day(s).`);
+        console.log(ui.dim(`Filter: only replays older than ${opts.olderThan} day(s).`));
       }
       printPlan(scans);
     }
@@ -152,7 +163,9 @@ export async function run(argv: string[]): Promise<number> {
       if (opts.json) {
         console.log(JSON.stringify({ status: 'dry-run', ...summary }, null, 2));
       } else {
-        console.log('\n(dry run) No files were deleted. Re-run without --dry-run to clean up.');
+        console.log(
+          ui.warn('\n(dry run) No files were deleted. Re-run without --dry-run to clean up.'),
+        );
       }
       return 0;
     }
@@ -160,7 +173,7 @@ export async function run(argv: string[]): Promise<number> {
     if (!opts.yes && !opts.json) {
       const ok = await confirm('\nDelete all of these replays? This cannot be undone.');
       if (!ok) {
-        console.log('Aborted. Your replays are safe. 🛡️');
+        console.log(ui.info('Aborted. Your replays are safe. 🛡️'));
         return 0;
       }
     }
@@ -170,19 +183,21 @@ export async function run(argv: string[]): Promise<number> {
       console.log(JSON.stringify({ status: 'done', ...summary }, null, 2));
     } else {
       console.log(
-        `\n✅ Deleted ${summary.filesDeleted} replay(s), freed ${formatBytes(summary.bytesFreed)}.`,
+        ui.success(
+          `\n✅ Deleted ${summary.filesDeleted} replay(s), freed ${formatBytes(summary.bytesFreed)}.`,
+        ),
       );
       if (summary.failures.length > 0) {
-        console.log(`⚠️  ${summary.failures.length} file(s) could not be deleted:`);
+        console.log(ui.warn(`⚠️  ${summary.failures.length} file(s) could not be deleted:`));
         for (const failure of summary.failures) {
-          console.log(`   - ${failure.path}: ${failure.error}`);
+          console.log(ui.dim(`   - ${failure.path}: ${failure.error}`));
         }
       }
     }
     return summary.failures.length > 0 ? 1 : 0;
   } catch (err) {
     if (err instanceof SteamNotFoundError || err instanceof UnsupportedPlatformError) {
-      console.error(err.message);
+      console.error(ui.error(err.message));
       return 1;
     }
     throw err;

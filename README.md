@@ -76,6 +76,20 @@ npm run typecheck   # TypeScript 7 strict mode
 CI runs on Ubuntu, macOS, and Windows. Pushing a `v*` tag publishes to npm
 via GitHub Actions (requires an `NPM_TOKEN` repository secret).
 
+## Security & supply chain
+
+This is **read-only open source**: the code is public so you can audit it, but
+**pull requests and external contributions are not accepted** — repository
+interaction limits restrict issues/PRs to collaborators only. This is a
+deliberate supply-chain security measure.
+
+Protections in place: branch protection on `main` (no force pushes, linear history),
+read-only `GITHUB_TOKEN` in CI, manual approval required before any forked-PR
+workflow can run, secret scanning with push protection, Dependabot security
+updates, npm provenance on releases, and only two runtime dependencies
+(`commander`, `chalk`). See [SECURITY.md](SECURITY.md) for details and how to
+report vulnerabilities privately.
+
 ## License
 
 MIT
